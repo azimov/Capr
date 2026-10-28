@@ -32,6 +32,7 @@ setValidity("Query", function(object) {
                     "DoseEra",
                     "DrugExposure",
                     "DrugEra",
+                    "Episode",
                     "Measurement",
                     "Observation",
                     "PayerPlanPeriod",
@@ -50,6 +51,7 @@ setValidity("Query", function(object) {
                  "ConditionOccurrence" = "Condition",
                  "DeviceExposure" = "Device",
                  "DrugExposure" = "Drug",
+                 "Episode" = "Episode",
                  "Measurement" = "Measurement",
                  "Specimen" = "Specimen",
                  "VisitOccurrence" = "Visit",
@@ -372,6 +374,21 @@ visitDetail <- function(conceptSet, ...) {
   }
 
   query(domain = "VisitDetail",
+        conceptSet = conceptSet,
+        ...)
+}
+
+#' Query the episode domain (CDM 5.4)
+#'
+#' @param conceptSet A \code{ConceptSet} for \code{episode_concept_id}, or \code{NULL} for any episode.
+#' @param ... Optional attributes: \code{firstOccurrence()}, \code{episodeStartDate()},
+#'   \code{episodeEndDate()}, \code{episodeNumber()}, \code{episodeTypeCS()},
+#'   \code{episodeObjectConceptCS()}, \code{age()}, \code{genderCS()}, etc.
+#' @return A \code{Query} object.
+#' @seealso \code{\link{entry}}, \code{\link{cs}}
+#' @export
+episode <- function(conceptSet = NULL, ...) {
+  query(domain = "Episode",
         conceptSet = conceptSet,
         ...)
 }
