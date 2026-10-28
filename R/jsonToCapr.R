@@ -80,7 +80,7 @@ jsonToCapr <- function(jsonPath, mode = c("strict", "skip"), returnSkipped = FAL
 
       codesetId <- domainVal$CodesetId %||% domainVal$CodesetID %||% NULL
       # No CodesetId is allowed for Death, ObservationPeriod (any period), or when a SourceConcept attribute references a concept set
-      allowNoCodeset <- domainKey %in% c("Death", "ObservationPeriod", "Episode")
+      allowNoCodeset <- domainKey %in% c("Death", "ObservationPeriod", "Episode", "CustomEra")
       noMainConceptSet <- is.null(codesetId)
       if (noMainConceptSet) {
         if (allowNoCodeset) {
@@ -108,6 +108,7 @@ jsonToCapr <- function(jsonPath, mode = c("strict", "skip"), returnSkipped = FAL
       }
       # ObservationPeriod() takes no concept set; Atlas JSON may still include CodesetId for the empty set
       if (identical(domainKey, "ObservationPeriod")) conceptSetVar <- character(0)
+      if (identical(domainKey, "CustomEra")) conceptSetVar <- character(0)
 
       attributeCalls <- domainAttributesToCapr(domainKey, domainVal, emitter, jsonContextPath = "PrimaryCriteria", conceptSetById = conceptSetById)
 
@@ -474,6 +475,7 @@ domainKeyToQueryFun <- function(domainKey, emitter) {
     ObservationPeriod   = "observationPeriod",
     DoseEra             = "doseEra",
     Episode             = "episode",
+    CustomEra           = "customEra",
 
     Specimen             = "specimen",
     VisitDetail           = "visitDetail",
@@ -670,6 +672,8 @@ getSupportedKeysForDomain <- function(domainKey) {
     VisitDetail     = c("VisitDetailSourceConcept"),
     Episode         = c("EpisodeStartDate", "EpisodeEndDate", "EpisodeNumber",
                         "EpisodeTypeCS", "EpisodeObjectConceptCS"),
+    CustomEra       = c("CriteriaList", "GapDays", "StartDate", "EndDate",
+                        "Duration", "AgeAtStart", "GenderCS"),
     character(0)
   )
   c(baseKeys, domainExtra)
@@ -770,7 +774,7 @@ domainAttributesToCapr <- function(domainKey, domainVal, emitter, jsonContextPat
   }
 
   # Logic: First occurrence
-  if (isTRUE(domainVal$First %||% FALSE)) {
+  if (isTRUE(domainVal$First %||% FALSE) && !identical(domainKey, "CustomEra")) {
     attributeCalls <- c(attributeCalls, "firstOccurrence()")
   }
 
@@ -797,8 +801,9 @@ domainAttributesToCapr <- function(domainKey, domainVal, emitter, jsonContextPat
   }
 
   # Age (cross-domain)
-  if (!is.null(domainVal$Age)) {
-    attributeCalls <- c(attributeCalls, sprintf("age(%s)", opAttributeToCode(domainVal$Age)))
+  ageVal <- domainVal[["Age"]]
+  if (!is.null(ageVal)) {
+    attributeCalls <- c(attributeCalls, sprintf("age(%s)", opAttributeToCode(ageVal)))
   }
 
   # Gender (demographic on query: male=8507, female=8532)
@@ -846,6 +851,58 @@ domainAttributesToCapr <- function(domainKey, domainVal, emitter, jsonContextPat
     attributeCalls <<- c(attributeCalls, sprintf(
       "%s(%s, isExclusion = %s)", caprFun, csVar,
       if (isTRUE(sel$IsExclusion)) "TRUE" else "FALSE"))
+  }
+
+  if (domainKey == "CustomEra") {
+    if (!is.null(domainVal$CriteriaList) && length(domainVal$CriteriaList) > 0) {
+      itemToCall <- function(node) {
+        dk <- names(node)[[1]]
+        dv <- node[[1]]
+        qf <- domainKeyToQueryFun(dk, emitter)
+        if (is.null(qf)) return(NULL)
+
+        cid <- dv$CodesetId %||% dv$CodesetID
+        if (is.null(cid)) {
+          if (!(dk %in% c("Death", "ObservationPeriod", "Episode", "CustomEra"))) {
+            emitter$skipOrStop(paste0("Missing CodesetId for CustomEra item: ", dk))
+            return(NULL)
+          }
+          csv <- if (identical(dk, "ObservationPeriod")) character(0) else "NULL"
+        } else {
+          csv <- conceptSetById[[as.character(cid)]]
+          if (is.null(csv)) {
+            emitter$skipOrStop(paste0("CodesetId not found for CustomEra item: ", cid))
+            return(NULL)
+          }
+        }
+
+        attrs <- domainAttributesToCapr(dk, dv, emitter, jsonContextPath = "CustomEra", conceptSetById = conceptSetById)
+        sprintf("%s(%s)", qf, paste(c(csv, attrs), collapse = ", "))
+      }
+      calls <- Filter(Negate(is.null), lapply(domainVal$CriteriaList, itemToCall))
+      if (length(calls) > 0) {
+        attributeCalls <- c(attributeCalls, sprintf("criteriaList = list(%s)", paste(calls, collapse = ", ")))
+      }
+    }
+    if (!is.null(domainVal$GapDays)) {
+      attributeCalls <- c(attributeCalls, sprintf("gapDays = %sL", as.integer(domainVal$GapDays)))
+    }
+    if (isTRUE(domainVal$First %||% FALSE)) {
+      attributeCalls <- c(attributeCalls, "first = TRUE")
+    }
+    if (!is.null(domainVal$StartDate)) {
+      attributeCalls <- c(attributeCalls, sprintf("customEraStartDate(%s)", opAttributeToCode(domainVal$StartDate)))
+    }
+    if (!is.null(domainVal$EndDate)) {
+      attributeCalls <- c(attributeCalls, sprintf("customEraEndDate(%s)", opAttributeToCode(domainVal$EndDate)))
+    }
+    if (!is.null(domainVal$Duration)) {
+      attributeCalls <- c(attributeCalls, sprintf("customEraDuration(%s)", opAttributeToCode(domainVal$Duration)))
+    }
+    if (!is.null(domainVal$AgeAtStart)) {
+      attributeCalls <- c(attributeCalls, sprintf("ageAtStart(%s)", opAttributeToCode(domainVal$AgeAtStart)))
+    }
+    addConceptSetSelectionAttr("GenderCS", "genderCS")
   }
 
   if (domainKey == "Episode") {

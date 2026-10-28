@@ -33,6 +33,7 @@ setValidity("Query", function(object) {
                     "DrugExposure",
                     "DrugEra",
                     "Episode",
+                    "CustomEra",
                     "Measurement",
                     "Observation",
                     "PayerPlanPeriod",
@@ -86,7 +87,8 @@ query <- function(domain, conceptSet = NULL, ...) {
   checkCaprDots(atb,
                 c("conceptSetAttribute", "conceptAttribute", "valueAsStringAttribute",
                   "opAttributeSuper", "logicAttribute", "keyValueAttribute",
-                  "dateAdjustmentAttribute", "nestedAttribute"),
+                  "dateAdjustmentAttribute", "nestedAttribute",
+                  "criteriaListAttribute", "gapDaysAttribute"),
                 "query", "Capr attribute objects", "conceptSet")
 
   if (is.null(conceptSet)) {
@@ -391,6 +393,31 @@ episode <- function(conceptSet = NULL, ...) {
   query(domain = "Episode",
         conceptSet = conceptSet,
         ...)
+}
+
+#' Build a custom era from nested criteria
+#'
+#' @param conceptSet Unused; kept for a consistent query signature.
+#' @param criteriaList A list of \code{Query} objects to merge into eras.
+#' @param gapDays Integer days between events to merge.
+#' @param first If \code{TRUE}, keep the first era per person.
+#' @param ... Optional attributes: \code{customEraStartDate()}, \code{customEraEndDate()},
+#'   \code{customEraDuration()}, \code{ageAtStart()}, \code{genderCS()},
+#'   \code{dateAdjustment()}, etc.
+#' @return A \code{Query} object of domain \code{CustomEra}.
+#' @seealso \code{\link{entry}}, \code{\link{customEraCriteria}}
+#' @export
+customEra <- function(criteriaList, gapDays = 0L, first = FALSE, ..., conceptSet = NULL) {
+  if (isTRUE(first)) {
+    query(domain = "CustomEra", conceptSet = conceptSet,
+          criteriaList = customEraCriteria(criteriaList),
+          gapDays = customEraGapDays(gapDays),
+          firstOccurrence(), ...)
+  } else {
+    query(domain = "CustomEra", conceptSet = conceptSet,
+          criteriaList = customEraCriteria(criteriaList),
+          gapDays = customEraGapDays(gapDays), ...)
+  }
 }
 
 #' Query the observation period domain
